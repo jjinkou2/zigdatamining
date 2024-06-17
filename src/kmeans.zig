@@ -9,18 +9,14 @@ const MAX_Y = 20.0;
 const PI = 3.14159265358979323846;
 
 const Circle = struct {
-    x: f16,
-    y: f16,
+    position: rl.Vector2,
     radius: f16,
     color: rl.Color,
 
-    pub fn init(x: f16, y: f16, radius: f16, color: rl.Color) Circle {
-        return Circle{
-            .x = x,
-            .y = y,
-            .radius = radius,
-            .color = color,
-        };
+    pub fn init(self: *Circle, position: rl.Vector2, radius: f16, color: rl.Color) void {
+        self.position = position;
+        self.radius = radius;
+        self.color = color;
     }
 };
 
@@ -41,33 +37,26 @@ const Sample = struct {
     x: f16,
     y: f16,
 
-    pub fn toCircle(self: Sample) Circle {
+    pub fn init(self: *Sample, x: f16, y: f16) void {
+        self.x = x;
+        self.y = y;
+    }
+
+    pub fn toCircleV(self: *Sample, circle: *Circle, radius: f16, color: rl.Color) void {
+        // -20.0 .. 20.0 => 0..40 => 0..1
         const lx: f16 = MAX_X - MIN_X;
         const ly: f16 = MAX_Y - MIN_Y;
         // x normalisé
-        const nx: f32 = (self.x - MIN_X) / lx; //  shift a 0..40 et ramene a 0..1
-        const ny: f32 = (self.y - MIN_Y) / ly; //  shift a 0..40 et ramene a 0..1
+        const nx: f16 = (self.*.x - MIN_X) / lx; //  shift a 0..40 et ramene a 0..1
+        const ny: f16 = (self.*.y - MIN_Y) / ly; //  shift a 0..40 et ramene a 0..1
 
-        const width: f32 = @floatFromInt(rl.getScreenWidth());
-        const height: f32 = @floatFromInt(rl.getScreenHeight());
+        const width: f16 = @floatFromInt(rl.getScreenWidth());
+        const height: f16 = @floatFromInt(rl.getScreenHeight());
 
-        return Circle.init(nx * width, height - ny * height, 10, rl.Color.red);
+        const position = rl.Vector2{ .x = nx * width, .y = height - ny * height };
+        circle.init(position, radius, color);
     }
 };
-
-pub fn project_sample_to_screen(sample: rl.Vector2) rl.Vector2 {
-    // -20.0 .. 20.0 => 0..40 => 0..1
-
-    const lx: f16 = MAX_X - MIN_X;
-    const ly: f16 = MAX_Y - MIN_Y;
-    // x normalisé
-    const nx: f32 = (sample.x - MIN_X) / lx; //  shift a 0..40 et ramene a 0..1
-    const ny: f32 = (sample.y - MIN_Y) / ly; //  shift a 0..40 et ramene a 0..1
-
-    const width: f32 = @floatFromInt(rl.getScreenWidth());
-    const height: f32 = @floatFromInt(rl.getScreenHeight());
-    return rl.Vector2{ .x = nx * width, .y = height - ny * height };
-}
 
 pub fn main() anyerror!void {
     // Initialization
@@ -81,18 +70,32 @@ pub fn main() anyerror!void {
 
     //--------------------------------------------------------------------------------------
 
+    // const circle1 = Circle.init(.{ .x = 0, .y = 10 }, 10, rl.Color.red);
+    // std.debug.print("ptr ext:{*}\n", .{&circle1});
+    // std.debug.print("circle:{}\n", .{circle1});
+    //
+    // var circle2: Circle = undefined;
+    // circle2.init1(.{ .x = 10, .y = 12 }, 11, rl.Color.blue);
+    // std.debug.print("ptr ext:{*}\n", .{&circle2});
+    // std.debug.print("circle2:{}\n", .{circle2});
+    // //
+    // const position = rl.Vector2{ .x = 20, .y = 22 };
+    // var circle3 = Circle{ .position = position, .radius = 21, .color = rl.Color.red };
+    //
+    // init2(.{ .x = 30, .y = 52 }, 11, rl.Color.blue, &circle3);
+    // std.debug.print("ptr ext:{*}\n", .{&circle3});
+    // std.debug.print("circle3:{}\n", .{circle3});
+
     // Main game loop
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         rl.beginDrawing();
         defer rl.endDrawing();
 
         rl.clearBackground(rl.getColor(0x181818AA));
-        const sample = rl.Vector2{ .x = 0, .y = 0 };
-        const sample1 = Sample{ .x = 10, .y = 10 };
-        const projectedSample = project_sample_to_screen(sample);
-        const circle = sample1.toCircle();
-        rl.drawCircleV(projectedSample, 10, rl.Color.red);
-        rl.drawCircle(circle.x, circle.y, circle.radius, circle.color);
+        var sample: Sample = .{ .x = 0, .y = 0 };
+        var circle: Circle = undefined;
+        sample.toCircleV(&circle, 10, rl.Color.blue);
+        rl.drawCircleV(circle.position, circle.radius, circle.color);
 
         //----------------------------------------------------------------------------------
     }
