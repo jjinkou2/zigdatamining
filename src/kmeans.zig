@@ -16,7 +16,9 @@ const Circle = struct {
 };
 
 pub fn myRand() f32 {
-    var rand = std.rand.DefaultPrng.init(@as(u64, @bitCast(std.time.milliTimestamp())));
+    var seed: u64 = undefined;
+    std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
+    var rand = std.rand.DefaultPrng.init(seed);
     return rand.random().float(f32);
 }
 
@@ -24,26 +26,25 @@ const Cluster = struct {
     center: rl.Vector2,
     radius: f32,
     color: rl.Color,
-    circles: []Circle,
+    samples: []Sample,
     allocator: Allocator,
 
     pub fn init(allocator: Allocator, center: rl.Vector2, radius: f32, color: rl.Color, count: usize) !Cluster {
-        var circles = try allocator.alloc(Circle, count);
-        errdefer allocator.free(circles);
+        const samples = try allocator.alloc(Sample, count);
+        errdefer allocator.free(samples);
 
         for (0..count) |i| {
             const angle = myRand() * 2 * PI;
             const mag = myRand();
-            var sample: Sample = .{ .x = center.x + @cos(angle) * mag * radius, .y = center.y + @sin(angle) * mag * radius };
-            sample.toCircleV(&circles[i], radius, color);
+            samples[i] = Sample{ .x = center.x + @cos(angle) * mag * radius, .y = center.y + @sin(angle) * mag * radius };
         }
 
-        return .{ .allocator = allocator, .center = center, .radius = radius, .color = color, .circles = circles };
+        return Cluster{ .allocator = allocator, .center = center, .radius = radius, .color = color, .samples = samples };
     }
 
     pub fn deinit(cluster: Cluster) void {
         const allocator = cluster.allocator;
-        allocator.free(cluster.circles);
+        allocator.free(cluster.samples);
     }
 };
 
@@ -51,20 +52,18 @@ const Sample = struct {
     x: f32,
     y: f32,
 
-    pub fn toCircleV(self: *Sample, circle: *Circle, radius: f32, color: rl.Color) void {
+    pub fn toCircleV(self: Sample, radius: f32, color: rl.Color) Circle {
         // -20.0 .. 20.0 => 0..40 => 0..1
         const lx = MAX_X - MIN_X;
         const ly = MAX_Y - MIN_Y;
         // x normalisé
-        const nx = (self.*.x - MIN_X) / lx; //  shift a 0..40 et ramene a 0..1
-        const ny = (self.*.y - MIN_Y) / ly; //  shift a 0..40 et ramene a 0..1
+        const nx = (self.x - MIN_X) / lx; //  shift a 0..40 et ramene a 0..1
+        const ny = (self.y - MIN_Y) / ly; //  shift a 0..40 et ramene a 0..1
 
         const width: f32 = @floatFromInt(rl.getScreenWidth());
         const height: f32 = @floatFromInt(rl.getScreenHeight());
 
-        circle.center = rl.Vector2{ .x = nx * width, .y = height - ny * height };
-        circle.radius = radius;
-        circle.color = color;
+        return Circle{ .center = rl.Vector2{ .x = nx * width, .y = height - ny * height }, .radius = radius, .color = color };
     }
 };
 
@@ -91,10 +90,11 @@ pub fn main() anyerror!void {
         defer rl.endDrawing();
 
         rl.clearBackground(rl.getColor(0x181818AA));
-        var sample: Sample = .{ .x = 0, .y = 0 };
-        var circle: Circle = undefined;
-        sample.toCircleV(&circle, 10, rl.Color.blue);
-        rl.drawCircleV(circle.center, circle.radius, circle.color);
+
+        for (cluster.samples) |sample| {
+            const circle = sample.toCircleV(10, cluster.color);
+            rl.drawCircleV(circle.center, circle.radius, circle.color);
+        }
 
         //----------------------------------------------------------------------------------
     }
