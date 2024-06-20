@@ -1,6 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const Allocator = std.mem.Allocator;
+const CircleList = std.ArrayList(Circle);
 
 const MIN_X = -20.0;
 const MAX_X = 20.0;
@@ -28,26 +29,14 @@ const Cluster = struct {
     center: rl.Vector2,
     radius: f32,
     color: rl.Color,
-    circles: []Circle,
-    allocator: Allocator,
 
-    pub fn init(allocator: Allocator, center: rl.Vector2, radius: f32, color: rl.Color, count: usize) !Cluster {
-        const circles = try allocator.alloc(Circle, count);
-        errdefer allocator.free(circles);
-
-        for (0..count) |i| {
+    pub fn init(center: rl.Vector2, radius: f32, color: rl.Color, count: usize, circles: *CircleList) !void {
+        for (0..count) |_| {
             const angle = myRand() * 2 * PI;
             const mag = myRand();
             const sample: Sample = .{ .x = center.x + @cos(angle) * mag * radius, .y = center.y + @sin(angle) * mag * radius };
-            circles[i] = sample.toCircleV(10, color);
+            try circles.append(sample.toCircleV(10, color));
         }
-
-        return Cluster{ .allocator = allocator, .center = center, .radius = radius, .color = color, .circles = circles };
-    }
-
-    pub fn deinit(cluster: Cluster) void {
-        const allocator = cluster.allocator;
-        allocator.free(cluster.circles);
     }
 };
 
@@ -75,7 +64,9 @@ pub fn main() anyerror!void {
     //--------------------------------------------------------------------------------------
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+
+    var circles = CircleList.init(gpa.allocator());
+    defer circles.deinit();
 
     const screenWidth = 800;
     const screenHeight = 600;
@@ -84,8 +75,7 @@ pub fn main() anyerror!void {
     rl.initWindow(screenWidth, screenHeight, "K-means");
     defer rl.closeWindow(); // Close window and OpenGL context
 
-    const cluster = try Cluster.init(allocator, .{ .x = 10, .y = 10 }, 10, rl.Color.red, 100);
-    defer cluster.deinit();
+    try Cluster.init(.{ .x = 10, .y = 10 }, 10, rl.Color.red, 100, &circles);
 
     // Main game loop
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
@@ -94,7 +84,7 @@ pub fn main() anyerror!void {
 
         rl.clearBackground(rl.getColor(0x181818AA));
 
-        for (cluster.circles) |circle| {
+        for (circles.items) |circle| {
             rl.drawCircleV(circle.center, circle.radius, circle.color);
         }
 
