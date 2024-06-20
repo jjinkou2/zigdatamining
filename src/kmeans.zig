@@ -1,12 +1,15 @@
 const std = @import("std");
 const rl = @import("raylib");
 const Allocator = std.mem.Allocator;
-const CircleList = std.ArrayList(Circle);
+const SampleList = std.ArrayList(Sample);
 
 const MIN_X = -20.0;
 const MAX_X = 20.0;
 const MIN_Y = -20.0;
 const MAX_Y = 20.0;
+
+const RED = rl.Color.red;
+const BLUE = rl.Color.blue;
 
 const K = 3;
 
@@ -30,12 +33,11 @@ const Cluster = struct {
     radius: f32,
     color: rl.Color,
 
-    pub fn init(center: rl.Vector2, radius: f32, color: rl.Color, count: usize, circles: *CircleList) !void {
+    pub fn init(center: rl.Vector2, radius: f32, count: usize, samples: *SampleList) !void {
         for (0..count) |_| {
             const angle = myRand() * 2 * PI;
             const mag = myRand();
-            const sample: Sample = .{ .x = center.x + @cos(angle) * mag * radius, .y = center.y + @sin(angle) * mag * radius };
-            try circles.append(sample.toCircleV(10, color));
+            try samples.append(.{ .x = center.x + @cos(angle) * mag * radius, .y = center.y + @sin(angle) * mag * radius });
         }
     }
 };
@@ -65,8 +67,8 @@ pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var circles = CircleList.init(gpa.allocator());
-    defer circles.deinit();
+    var samples = SampleList.init(gpa.allocator());
+    defer samples.deinit();
 
     const screenWidth = 800;
     const screenHeight = 600;
@@ -75,7 +77,9 @@ pub fn main() anyerror!void {
     rl.initWindow(screenWidth, screenHeight, "K-means");
     defer rl.closeWindow(); // Close window and OpenGL context
 
-    try Cluster.init(.{ .x = 10, .y = 10 }, 10, rl.Color.red, 100, &circles);
+    try Cluster.init(.{ .x = 0, .y = 0 }, 10, 100, &samples);
+    try Cluster.init(.{ .x = MIN_X * 0.5, .y = MAX_Y * 0.5 }, 5, 50, &samples);
+    try Cluster.init(.{ .x = MAX_X * 0.5, .y = MAX_Y * 0.5 }, 5, 50, &samples);
 
     // Main game loop
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
@@ -84,7 +88,8 @@ pub fn main() anyerror!void {
 
         rl.clearBackground(rl.getColor(0x181818AA));
 
-        for (circles.items) |circle| {
+        for (samples.items) |sample| {
+            const circle = sample.toCircleV(5, RED);
             rl.drawCircleV(circle.center, circle.radius, circle.color);
         }
 
