@@ -17,7 +17,7 @@ const RED = rl.Color.red;
 const YELLOW = rl.Color.yellow;
 const BLUE = rl.Color.blue;
 
-const colors = .{ rl.Color.gold, rl.Color.pink, rl.Color.maroon, rl.Color.lime, rl.Color.sky_blue, rl.Color.blue, rl.Color.violet };
+const colors: [7]rl.Color = .{ rl.Color.gold, rl.Color.pink, rl.Color.maroon, rl.Color.lime, rl.Color.sky_blue, rl.Color.blue, rl.Color.violet };
 
 // means
 const K = 3;
@@ -37,23 +37,14 @@ pub fn myRand() f32 {
     return rand.random().float(f32);
 }
 
-const Cluster = struct {
-    center: rl.Vector2,
-    radius: f32,
-    color: rl.Color,
-
-    // Put sample inside a cluster positionned at center within a radius
-    pub fn init(center: rl.Vector2, radius: f32, count: usize, samples: *SampleList) !void {
-        for (0..count) |_| {
-            const angle = myRand() * 2 * PI; // sample inside cluster will have this angle
-            const mag = std.math.sqrt(myRand()); // it will be distant from the cluster's center with this magnitude
-            const sample: Sample = .{ .x = center.x + @cos(angle) * mag * radius, .y = center.y + @sin(angle) * mag * radius };
-            try samples.append(sample);
-        }
+pub fn generate_samples(center: rl.Vector2, radius: f32, count: usize, samples: *SampleList) !void {
+    for (0..count) |_| {
+        const angle = myRand() * 2 * PI; // sample inside cluster will have this angle
+        const mag = std.math.sqrt(myRand()); // it will be distant from the cluster's center with this magnitude
+        const sample: Sample = .{ .x = center.x + @cos(angle) * mag * radius, .y = center.y + @sin(angle) * mag * radius };
+        try samples.append(sample);
     }
-};
-
-const clusters: [K]Cluster = undefined;
+}
 
 const Sample = struct {
     x: f32,
@@ -83,36 +74,46 @@ pub fn main() anyerror!void {
     var samples = SampleList.init(gpa.allocator());
     defer samples.deinit();
 
+    var clusters: [K]SampleList = undefined;
+    for (&clusters) |*cluster| {
+        cluster.* = SampleList.init(gpa.allocator());
+    }
+    defer {
+        for (&clusters) |cluster| {
+            cluster.deinit();
+        }
+    }
+
     const screenWidth = 800;
     const screenHeight = 600;
 
     rl.setConfigFlags(.{ .window_resizable = true });
     rl.initWindow(screenWidth, screenHeight, "K-means");
     defer rl.closeWindow(); // Close window and OpenGL context
-    //
 
     var means: [K]Sample = undefined;
 
     for (&means) |*mean| {
+        // pour info == lerp  == interpolation lineaire
         mean.x = myRand() * (MAX_X - MIN_X) + MIN_X;
         mean.y = myRand() * (MAX_Y - MIN_Y) + MIN_Y;
     }
 
-    try Cluster.init(.{ .x = 0, .y = 0 }, CLUSTER_RADIUS, 100, &samples);
-    try Cluster.init(.{ .x = MIN_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
-    try Cluster.init(.{ .x = MAX_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
+    try generate_samples(.{ .x = 0, .y = 0 }, CLUSTER_RADIUS, 100, &samples);
+    try generate_samples(.{ .x = MIN_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
+    try generate_samples(.{ .x = MAX_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
 
     // Main game loop
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         if (rl.isKeyPressed(rl.KeyboardKey.key_r)) {
             samples.clearRetainingCapacity();
-            try Cluster.init(.{ .x = 0, .y = 0 }, CLUSTER_RADIUS, 100, &samples);
-            try Cluster.init(.{ .x = MIN_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
-            try Cluster.init(.{ .x = MAX_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
+            try generate_samples(.{ .x = 0, .y = 0 }, CLUSTER_RADIUS, 100, &samples);
+            try generate_samples(.{ .x = MIN_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
+            try generate_samples(.{ .x = MAX_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
         }
+
         rl.beginDrawing();
         defer rl.endDrawing();
-
         rl.clearBackground(rl.getColor(0x181818AA));
 
         for (samples.items) |sample| {
@@ -124,6 +125,5 @@ pub fn main() anyerror!void {
             const circle = sample.toCircleV(MEAN_RADIUS, colors[i % colors.len]);
             rl.drawCircleV(circle.center, circle.radius, circle.color);
         }
-        //----------------------------------------------------------------------------------
     }
 }
