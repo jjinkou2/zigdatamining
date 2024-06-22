@@ -41,22 +41,21 @@ pub fn generate_samples(center: rl.Vector2, radius: f32, count: usize, samples: 
     for (0..count) |_| {
         const angle = myRand() * 2 * PI; // sample inside cluster will have this angle
         const mag = std.math.sqrt(myRand()); // it will be distant from the cluster's center with this magnitude
-        const sample: Sample = .{ .x = center.x + @cos(angle) * mag * radius, .y = center.y + @sin(angle) * mag * radius };
+        const sample: Sample = .{ .point = .{ .x = center.x + @cos(angle) * mag * radius, .y = center.y + @sin(angle) * mag * radius } };
         try samples.append(sample);
     }
 }
 
 const Sample = struct {
-    x: f32,
-    y: f32,
+    point: rl.Vector2,
 
     pub fn toCircleV(self: Sample, radius: f32, color: rl.Color) Circle {
         // -20.0 .. 20.0 => 0..40 => 0..1
         const lx = MAX_X - MIN_X;
         const ly = MAX_Y - MIN_Y;
         // x normalisé
-        const nx = (self.x - MIN_X) / lx; //  shift a 0..40 et ramene a 0..1
-        const ny = (self.y - MIN_Y) / ly; //  shift a 0..40 et ramene a 0..1
+        const nx = (self.point.x - MIN_X) / lx; //  shift a 0..40 et ramene a 0..1
+        const ny = (self.point.y - MIN_Y) / ly; //  shift a 0..40 et ramene a 0..1
 
         const width: f32 = @floatFromInt(rl.getScreenWidth());
         const height: f32 = @floatFromInt(rl.getScreenHeight());
@@ -95,13 +94,29 @@ pub fn main() anyerror!void {
 
     for (&means) |*mean| {
         // pour info == lerp  == interpolation lineaire
-        mean.x = myRand() * (MAX_X - MIN_X) + MIN_X;
-        mean.y = myRand() * (MAX_Y - MIN_Y) + MIN_Y;
+        // mean.x = myRand() * (MAX_X - MIN_X) + MIN_X;
+        // mean.y = myRand() * (MAX_Y - MIN_Y) + MIN_Y;
+        mean.point.x = myRand() * (MAX_X - MIN_X) + MIN_X;
+        mean.point.y = myRand() * (MAX_Y - MIN_Y) + MIN_Y;
     }
 
+    // init samples
     try generate_samples(.{ .x = 0, .y = 0 }, CLUSTER_RADIUS, 100, &samples);
     try generate_samples(.{ .x = MIN_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
     try generate_samples(.{ .x = MAX_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
+
+    var k: i16 = -1;
+    var s = std.math.floatMax(f32);
+    // K means init == find samples nearest mean[k] and put it into the cluster[k]
+    for (samples.items) |sample| {
+        for (means, 0..) |mean, j| {
+            const sm = rl.lengthSqr(rl.subtractValue(sample.point, mean.point));
+            if (sm < s) {
+                s = sm;
+                k = j;
+            }
+        }
+    }
 
     // Main game loop
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
