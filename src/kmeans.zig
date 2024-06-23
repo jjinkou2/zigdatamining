@@ -12,12 +12,7 @@ const CLUSTER_RADIUS = 10.0;
 const SAMPLE_RADIUS = 4.0;
 const MEAN_RADIUS = 2 * SAMPLE_RADIUS;
 
-//Colors
-const RED = rl.Color.red;
-const YELLOW = rl.Color.yellow;
-const BLUE = rl.Color.blue;
-
-const colors: [7]rl.Color = .{ rl.Color.gold, rl.Color.pink, rl.Color.maroon, rl.Color.lime, rl.Color.sky_blue, rl.Color.blue, rl.Color.violet };
+const colors = .{ rl.Color.gold, rl.Color.pink, rl.Color.maroon, rl.Color.lime, rl.Color.sky_blue, rl.Color.blue, rl.Color.violet };
 
 // means
 const K = 3;
@@ -27,7 +22,6 @@ const PI = 3.14159265358979323846;
 const Circle = struct {
     center: rl.Vector2,
     radius: f32,
-    color: rl.Color,
 };
 
 pub fn myRand() f32 {
@@ -37,7 +31,7 @@ pub fn myRand() f32 {
     return rand.random().float(f32);
 }
 
-pub fn generate_samples(center: rl.Vector2, radius: f32, count: usize, samples: *SampleList) !void {
+pub fn generateSamples(center: rl.Vector2, radius: f32, count: usize, samples: *SampleList) !void {
     for (0..count) |_| {
         const angle = myRand() * 2 * PI; // sample inside cluster will have this angle
         const mag = std.math.sqrt(myRand()); // it will be distant from the cluster's center with this magnitude
@@ -49,7 +43,7 @@ pub fn generate_samples(center: rl.Vector2, radius: f32, count: usize, samples: 
 const Sample = struct {
     point: rl.Vector2,
 
-    pub fn toCircleV(self: Sample, radius: f32, color: rl.Color) Circle {
+    pub fn toScreenV(self: Sample) rl.Vector2 {
         // -20.0 .. 20.0 => 0..40 => 0..1
         const lx = MAX_X - MIN_X;
         const ly = MAX_Y - MIN_Y;
@@ -60,9 +54,45 @@ const Sample = struct {
         const width: f32 = @floatFromInt(rl.getScreenWidth());
         const height: f32 = @floatFromInt(rl.getScreenHeight());
 
-        return Circle{ .center = rl.Vector2{ .x = nx * width, .y = height - ny * height }, .radius = radius, .color = color };
+        return rl.Vector2{ .x = nx * width, .y = height - ny * height };
     }
 };
+
+pub fn distribute(samples: *SampleList) !void {
+    try generateSamples(.{ .x = 0, .y = 0 }, CLUSTER_RADIUS, 100, samples);
+    try generateSamples(.{ .x = MIN_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, samples);
+    try generateSamples(.{ .x = MAX_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, samples);
+}
+pub fn generateMeans(means: *[K]Sample) void {
+    for (means) |*mean| {
+        mean.point.x = myRand() * (MAX_X - MIN_X) + MIN_X;
+        mean.point.y = myRand() * (MAX_Y - MIN_Y) + MIN_Y;
+    }
+}
+pub fn initClusters(clusters: *[K]SampleList, samples: *SampleList, means: *[K]Sample) !void {
+    for (clusters) |*cluster| {
+        cluster.clearRetainingCapacity();
+    }
+    // K means init == find samples nearest mean[k] and put it into the cluster[k]
+    for (samples.items) |sample| {
+        var k: usize = 0;
+        var s = std.math.floatMax(f32);
+        for (0..K) |j| {
+            const sm = rl.Vector2.lengthSqr(rl.Vector2.subtract(sample.point, means[j].point));
+            if (sm < s) {
+                s = sm;
+                k = j;
+            }
+        }
+        try clusters[k].append(sample);
+    }
+}
+pub fn generate_new_state(clusters: *[K]SampleList, samples: *SampleList, means: *[K]Sample) !void {
+    samples.clearRetainingCapacity();
+    try distribute(samples);
+    generateMeans(means);
+    try initClusters(clusters, samples, means);
+}
 
 pub fn main() anyerror!void {
     // Initialization
@@ -73,12 +103,14 @@ pub fn main() anyerror!void {
     var samples = SampleList.init(gpa.allocator());
     defer samples.deinit();
 
+    var means: [K]Sample = undefined;
+
     var clusters: [K]SampleList = undefined;
     for (&clusters) |*cluster| {
         cluster.* = SampleList.init(gpa.allocator());
     }
     defer {
-        for (&clusters) |cluster| {
+        for (&clusters) |*cluster| {
             cluster.deinit();
         }
     }
@@ -90,55 +122,26 @@ pub fn main() anyerror!void {
     rl.initWindow(screenWidth, screenHeight, "K-means");
     defer rl.closeWindow(); // Close window and OpenGL context
 
-    var means: [K]Sample = undefined;
-
-    for (&means) |*mean| {
-        // pour info == lerp  == interpolation lineaire
-        // mean.x = myRand() * (MAX_X - MIN_X) + MIN_X;
-        // mean.y = myRand() * (MAX_Y - MIN_Y) + MIN_Y;
-        mean.point.x = myRand() * (MAX_X - MIN_X) + MIN_X;
-        mean.point.y = myRand() * (MAX_Y - MIN_Y) + MIN_Y;
-    }
-
-    // init samples
-    try generate_samples(.{ .x = 0, .y = 0 }, CLUSTER_RADIUS, 100, &samples);
-    try generate_samples(.{ .x = MIN_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
-    try generate_samples(.{ .x = MAX_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
-
-    var k: i16 = -1;
-    var s = std.math.floatMax(f32);
-    // K means init == find samples nearest mean[k] and put it into the cluster[k]
-    for (samples.items) |sample| {
-        for (means, 0..) |mean, j| {
-            const sm = rl.lengthSqr(rl.subtractValue(sample.point, mean.point));
-            if (sm < s) {
-                s = sm;
-                k = j;
-            }
-        }
-    }
+    generateMeans(&means);
+    try distribute(&samples);
+    try initClusters(&clusters, &samples, &means);
 
     // Main game loop
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         if (rl.isKeyPressed(rl.KeyboardKey.key_r)) {
-            samples.clearRetainingCapacity();
-            try generate_samples(.{ .x = 0, .y = 0 }, CLUSTER_RADIUS, 100, &samples);
-            try generate_samples(.{ .x = MIN_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
-            try generate_samples(.{ .x = MAX_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, &samples);
+            try generate_new_state(&clusters, &samples, &means);
         }
 
         rl.beginDrawing();
         defer rl.endDrawing();
         rl.clearBackground(rl.getColor(0x181818AA));
 
-        for (samples.items) |sample| {
-            const circle = sample.toCircleV(SAMPLE_RADIUS, RED);
-            rl.drawCircleV(circle.center, circle.radius, circle.color);
-        }
-
-        inline for (means, 0..) |sample, i| {
-            const circle = sample.toCircleV(MEAN_RADIUS, colors[i % colors.len]);
-            rl.drawCircleV(circle.center, circle.radius, circle.color);
+        inline for (0..K) |i| {
+            const color = colors[i % colors.len];
+            for (clusters[i].items) |sample| {
+                rl.drawCircleV(sample.toScreenV(), SAMPLE_RADIUS, color);
+            }
+            rl.drawCircleV(means[i].toScreenV(), MEAN_RADIUS, color);
         }
     }
 }
