@@ -63,13 +63,13 @@ pub fn distribute(samples: *SampleList) !void {
     try generateSamples(.{ .x = MIN_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, samples);
     try generateSamples(.{ .x = MAX_X * 0.5, .y = MAX_Y * 0.5 }, CLUSTER_RADIUS * 0.5, 50, samples);
 }
-pub fn generateMeans(means: *[K]Sample) void {
+pub fn generateMeans(means: []Sample) void {
     for (means) |*mean| {
         mean.point.x = myRand() * (MAX_X - MIN_X) + MIN_X;
         mean.point.y = myRand() * (MAX_Y - MIN_Y) + MIN_Y;
     }
 }
-pub fn initClusters(clusters: *[K]SampleList, samples: *SampleList, means: *[K]Sample) !void {
+pub fn initClusters(clusters: []SampleList, samples: *SampleList, means: []Sample) !void {
     for (clusters) |*cluster| {
         cluster.clearRetainingCapacity();
     }
@@ -87,12 +87,29 @@ pub fn initClusters(clusters: *[K]SampleList, samples: *SampleList, means: *[K]S
         try clusters[k].append(sample);
     }
 }
-pub fn generate_new_state(clusters: *[K]SampleList, samples: *SampleList, means: *[K]Sample) !void {
-    samples.clearRetainingCapacity();
-    try distribute(samples);
-    generateMeans(means);
-    try initClusters(clusters, samples, means);
-}
+
+const State = struct {
+    pub fn init(clusters: []SampleList, samples: *SampleList, means: []Sample) !void {
+        try distribute(samples);
+        generateMeans(means);
+        try initClusters(clusters, samples, means);
+    }
+
+    pub fn generateNew(clusters: []SampleList, samples: *SampleList, means: []Sample) !void {
+        samples.clearRetainingCapacity();
+        try State.init(clusters, samples, means);
+    }
+
+    pub fn draw(means: []Sample, clusters: []SampleList) void {
+        inline for (0..K) |i| {
+            const color = colors[i % colors.len];
+            for (clusters[i].items) |sample| {
+                rl.drawCircleV(sample.toScreenV(), SAMPLE_RADIUS, color);
+            }
+            rl.drawCircleV(means[i].toScreenV(), MEAN_RADIUS, color);
+        }
+    }
+};
 
 pub fn main() anyerror!void {
     // Initialization
@@ -122,26 +139,18 @@ pub fn main() anyerror!void {
     rl.initWindow(screenWidth, screenHeight, "K-means");
     defer rl.closeWindow(); // Close window and OpenGL context
 
-    generateMeans(&means);
-    try distribute(&samples);
-    try initClusters(&clusters, &samples, &means);
+    try State.init(&clusters, &samples, &means);
 
     // Main game loop
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         if (rl.isKeyPressed(rl.KeyboardKey.key_r)) {
-            try generate_new_state(&clusters, &samples, &means);
+            try State.generateNew(&clusters, &samples, &means);
         }
 
         rl.beginDrawing();
         defer rl.endDrawing();
         rl.clearBackground(rl.getColor(0x181818AA));
 
-        inline for (0..K) |i| {
-            const color = colors[i % colors.len];
-            for (clusters[i].items) |sample| {
-                rl.drawCircleV(sample.toScreenV(), SAMPLE_RADIUS, color);
-            }
-            rl.drawCircleV(means[i].toScreenV(), MEAN_RADIUS, color);
-        }
+        State.draw(&means, &clusters);
     }
 }
