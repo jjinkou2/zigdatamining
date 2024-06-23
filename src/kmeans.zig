@@ -135,17 +135,13 @@ const State = struct {
     }
 
     pub fn update(self: *State) !void {
-        for (0..K) |k| {
-            const cluster_size = self.clusters[k].items.len;
-            var sumX: f32 = 0;
-            var sumY: f32 = 0;
-            for (self.clusters[k].items) |sample| {
-                sumX += sample.point.x;
-                sumY += sample.point.y;
+        for (self.clusters, 0..K) |cluster, k| {
+            const cluster_size = @as(f32, @floatFromInt(cluster.items.len));
+            for (cluster.items) |sample| {
+                self.means[k].point = rl.Vector2.add(self.means[k].point, sample.point);
             }
-            const newMeanX: f32 = sumX / @as(f32, @floatFromInt(cluster_size));
-            const newMeanY: f32 = sumY / @as(f32, @floatFromInt(cluster_size));
-            self.means[k] = .{ .point = .{ .x = newMeanX, .y = newMeanY } };
+            self.means[k].point.x /= cluster_size;
+            self.means[k].point.y /= cluster_size;
         }
         try assignClusters(&self.clusters, &self.samples, &self.means);
     }
