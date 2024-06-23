@@ -89,25 +89,48 @@ pub fn initClusters(clusters: []SampleList, samples: *SampleList, means: []Sampl
 }
 
 const State = struct {
-    pub fn init(clusters: []SampleList, samples: *SampleList, means: []Sample) !void {
-        try distribute(samples);
-        generateMeans(means);
-        try initClusters(clusters, samples, means);
+    samples: SampleList = undefined,
+    means: [K]Sample = undefined,
+    clusters: [K]SampleList = undefined,
+
+    pub fn init(allocator: Allocator) !State {
+        var samples = SampleList.init(allocator);
+        var means: [K]Sample = undefined;
+        var clusters: [K]SampleList = undefined;
+
+        for (&clusters) |*cluster| {
+            cluster.* = SampleList.init(allocator);
+        }
+        try distribute(&samples);
+        generateMeans(&means);
+        try initClusters(&clusters, &samples, &means);
+        return .{ .samples = samples, .clusters = clusters, .means = means };
     }
 
-    pub fn generateNew(clusters: []SampleList, samples: *SampleList, means: []Sample) !void {
-        samples.clearRetainingCapacity();
-        try State.init(clusters, samples, means);
+    pub fn deinit(self: *State) void {
+        self.samples.deinit();
+        for (&self.clusters) |*cluster| {
+            cluster.deinit();
+        }
     }
 
-    pub fn draw(means: []Sample, clusters: []SampleList) void {
+    pub fn draw(self: State) void {
         inline for (0..K) |i| {
             const color = colors[i % colors.len];
-            for (clusters[i].items) |sample| {
+            for (self.clusters[i].items) |sample| {
                 rl.drawCircleV(sample.toScreenV(), SAMPLE_RADIUS, color);
             }
-            rl.drawCircleV(means[i].toScreenV(), MEAN_RADIUS, color);
+            rl.drawCircleV(self.means[i].toScreenV(), MEAN_RADIUS, color);
         }
+    }
+    pub fn generateNew(self: *State) !void {
+        self.samples.clearRetainingCapacity();
+        for (&self.clusters) |*cluster| {
+            cluster.clearRetainingCapacity();
+        }
+        try distribute(&self.samples);
+        generateMeans(&self.means);
+        try initClusters(&self.clusters, &self.samples, &self.means);
     }
 };
 
@@ -117,21 +140,6 @@ pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var samples = SampleList.init(gpa.allocator());
-    defer samples.deinit();
-
-    var means: [K]Sample = undefined;
-
-    var clusters: [K]SampleList = undefined;
-    for (&clusters) |*cluster| {
-        cluster.* = SampleList.init(gpa.allocator());
-    }
-    defer {
-        for (&clusters) |*cluster| {
-            cluster.deinit();
-        }
-    }
-
     const screenWidth = 800;
     const screenHeight = 600;
 
@@ -139,18 +147,19 @@ pub fn main() anyerror!void {
     rl.initWindow(screenWidth, screenHeight, "K-means");
     defer rl.closeWindow(); // Close window and OpenGL context
 
-    try State.init(&clusters, &samples, &means);
+    var state: State = try State.init(gpa.allocator());
+    defer state.deinit();
 
     // Main game loop
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         if (rl.isKeyPressed(rl.KeyboardKey.key_r)) {
-            try State.generateNew(&clusters, &samples, &means);
+            try state.generateNew();
         }
 
         rl.beginDrawing();
         defer rl.endDrawing();
         rl.clearBackground(rl.getColor(0x181818AA));
 
-        State.draw(&means, &clusters);
+        state.draw();
     }
 }
