@@ -69,7 +69,7 @@ pub fn generateMeans(means: []Sample) void {
         mean.point.y = myRand() * (MAX_Y - MIN_Y) + MIN_Y;
     }
 }
-pub fn initClusters(clusters: []SampleList, samples: *SampleList, means: []Sample) !void {
+pub fn assignClusters(clusters: []SampleList, samples: *SampleList, means: []Sample) !void {
     for (clusters) |*cluster| {
         cluster.clearRetainingCapacity();
     }
@@ -103,7 +103,7 @@ const State = struct {
         }
         try distribute(&samples);
         generateMeans(&means);
-        try initClusters(&clusters, &samples, &means);
+        try assignClusters(&clusters, &samples, &means);
         return .{ .samples = samples, .clusters = clusters, .means = means };
     }
 
@@ -123,6 +123,7 @@ const State = struct {
             rl.drawCircleV(self.means[i].toScreenV(), MEAN_RADIUS, color);
         }
     }
+
     pub fn generateNew(self: *State) !void {
         self.samples.clearRetainingCapacity();
         for (&self.clusters) |*cluster| {
@@ -130,7 +131,23 @@ const State = struct {
         }
         try distribute(&self.samples);
         generateMeans(&self.means);
-        try initClusters(&self.clusters, &self.samples, &self.means);
+        try assignClusters(&self.clusters, &self.samples, &self.means);
+    }
+
+    pub fn update(self: *State) !void {
+        for (0..K) |k| {
+            const cluster_size = self.clusters[k].items.len;
+            var sumX: f32 = 0;
+            var sumY: f32 = 0;
+            for (self.clusters[k].items) |sample| {
+                sumX += sample.point.x;
+                sumY += sample.point.y;
+            }
+            const newMeanX: f32 = sumX / @as(f32, @floatFromInt(cluster_size));
+            const newMeanY: f32 = sumY / @as(f32, @floatFromInt(cluster_size));
+            self.means[k] = .{ .point = .{ .x = newMeanX, .y = newMeanY } };
+        }
+        try assignClusters(&self.clusters, &self.samples, &self.means);
     }
 };
 
@@ -161,5 +178,10 @@ pub fn main() anyerror!void {
         rl.clearBackground(rl.getColor(0x181818AA));
 
         state.draw();
+
+        if (rl.isKeyPressed(rl.KeyboardKey.key_u)) {
+            try state.update();
+            state.draw();
+        }
     }
 }
