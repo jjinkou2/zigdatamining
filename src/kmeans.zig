@@ -12,7 +12,15 @@ const CLUSTER_RADIUS = 10.0;
 const SAMPLE_RADIUS = 4.0;
 const MEAN_RADIUS = 2 * SAMPLE_RADIUS;
 
-const colors = .{ rl.Color.gold, rl.Color.pink, rl.Color.maroon, rl.Color.lime, rl.Color.sky_blue, rl.Color.blue, rl.Color.violet };
+const colors = .{
+    rl.Color.gold,
+    rl.Color.pink,
+    rl.Color.maroon,
+    rl.Color.lime,
+    rl.Color.sky_blue,
+    rl.Color.blue,
+    rl.Color.violet,
+};
 
 // means
 const K = 3;
